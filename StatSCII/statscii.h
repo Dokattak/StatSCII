@@ -6,12 +6,14 @@
 #include <opencv2/videoio.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
+
+#include <windows.h>
 #include <stdlib.h>
+#include <direct.h>
+
 #include <iostream>
 #include <random>
 #include <ctime>
-
-#include <Windows.h>
 
 #pragma warning(disable : 4996)
 #pragma warning(disable: 6386)		// Too many false positives so I killed the warning
@@ -35,7 +37,9 @@ public:
 	const char* what() { return msg; }
 };
 
-	const cv::Scalar _defaultcolor(255, 255, 255);
+	const cv::Scalar _CAL_basecolor(255, 255, 255);
+	const cv::Scalar _CAL_textcolor(0, 0, 0);
+	const cv::Point  _CAL_origin(0, 0);
 	const float _onethird = 1.0 / 3.0;
 
 	int GetMax(int* _nums, int _size)
@@ -54,35 +58,30 @@ public:
 	}
 }
 
-typedef int (*GrayScaleType)(int, int, int);
-namespace statscii_grayscale_types
+typedef int (*GSType)(int, int, int);
+namespace GSTypes
 {
+	/* ---				Grayscale Functions				--- */
 	int RelativeLuminance(int _r, int _g, int _b) { return 0.2126 * _r + 0.7152 * _g + 0.0722 * _b; }
-	int Lightness(int _r, int _g, int _b)         { int n[3] = { _r, _g, _b }; return GetMax(n, 3) * 0.5 + GetMin(n, 3) * 0.5; }
-	int Contrast(int _r, int _g, int _b)		  { return 0.299 * _r + 0.587 * _g + 0.114 * _b; }
-	int Average(int _r, int _g, int _b)			  { return _r * _onethird + _g * _onethird + _b * _onethird; }
-};
-
-enum Variations {
-	STANDARD,
-	CLASSIC,
-	CHAOS,
+	int Lightness(int _r, int _g, int _b) { int n[3] = { _r, _g, _b }; return GetMax(n, 3) * 0.5 + GetMin(n, 3) * 0.5; }
+	int Contrast(int _r, int _g, int _b) { return 0.299 * _r + 0.587 * _g + 0.114 * _b; }
+	int Average(int _r, int _g, int _b) { return _r * _onethird + _g * _onethird + _b * _onethird; }
 };
 
 struct statscii
 {
-	statscii(char* _fontfile, char* _mapfile) : mapfile(_mapfile)
+	statscii(char* fontfile, char* mapfile) : _mapfile(mapfile)
 	{
 		srand(time(0));
 
 		// Sets font
-		ft2->loadFontData(_fontfile, 0);
+		ft2->loadFontData(fontfile, 0);
 
 		FILE* file;								// Character map file
 		char  text[BUFFER_FILE_SIZE];				// Line of file
 
 		// If mapfile is null throw esception
-		if (!(file = fopen(mapfile, "r"))) throw _statexception("Cannot open character map file");
+		if (!(file = fopen(_mapfile, "r"))) throw _statexception("Cannot open character map file");
 
 		while (fgets(text, BUFFER_FILE_SIZE, file))
 		{
@@ -90,7 +89,6 @@ struct statscii
 
 			// Skip if first two chars are '/' or text is empty
 			if (text[1] == '/' && text[0] == '/' || strlen(text) < 1) continue;
-
 			if (!strlen(text)) continue;
 
 			int num;
@@ -106,25 +104,21 @@ struct statscii
 	/// </summary>
 	/// <param name="videofile">File path to source video</param>
 	/// <param name="height">Height, in characters, of the resulting video</param>
-	/// <param name="variation">Method of video conversion. See Variations enum for more conversions</param>
-	/// <param name="grayscale_conversion_type">Method of grayscale conversion. See GrayScale types for more conversions</param>
-	/// <param name="threshold">How many characters will be considered for video conversion. Only change if the variation is Variations::CHAOS</param>
-	void convert(
-		char* videofile,
-		int height								= 50,
-		bool color								= 0,
-		Variations variation				    = Variations::STANDARD,
-		GrayScaleType grayscale_conversion_type = GrayScaleType(statscii_grayscale_types::RelativeLuminance),
-		int threshold							= 1
-	) {
+
+	void convert(char* videofile, int height = 50)
+	{
 		printf("Creating video cpature...\n");
 		cv::VideoCapture video(videofile);							// Original video
 		if (!video.isOpened()) throw _statexception("Video cannot be opened.");
+
+
 
 		double video_height = video.get(cv::CAP_PROP_FRAME_HEIGHT);	// Original video height in pixels
 		double video_width	= video.get(cv::CAP_PROP_FRAME_WIDTH);	// Original video width in pixels
 		cv::Size size(video_width, video_height);
 		
+
+
 		printf("Finding codec and creating video writer...\n");
 		cv::VideoWriter result(										// Resulting video
 			RESULT_NAME,
@@ -132,22 +126,54 @@ struct statscii
 			video.get(cv::CAP_PROP_FPS),
 			size
 		);
-		
 		if (!result.isOpened()) throw _statexception("Cannot create output video.");
 
 		// Calculates dimensions for conversion
 		_yitr = video_height / height;
 		_xitr = ft2->getTextSize(DEFAULT_CHARACTER, _yitr, -1, 0).width;
 		area  = 1.0 / (_xitr * _yitr);
-		_y    = 0;
-		_x    = 0;
 		int tf = video.get(cv::CAP_PROP_FRAME_COUNT);
 		int cf = 0;
-		
+
 		clock_t time;
 		double  waittime = 0.0;
 		int		yend	 = video_height - _yitr;
 		int		xend	 = video_width - _xitr;
+
+		/*															*/
+		/* ---				SETUP BEGINS HERE					---	*/
+		/*															*/
+
+		char _path[] = "setup/ .png\0";
+		int _res;
+		if (color) goto skipsetup;
+		printf("Beginning setup...\n");
+
+
+		// Attempt to make directory. _mkdir returns 0 if succeeded
+		_res = _mkdir("setup");
+		// If the directory hasn't been created, and _res failed, then an error occured
+		if (!(GetFileAttributesA("setup/") & INVALID_FILE_ATTRIBUTES) && _res) throw _statexception("Cannot create new directory for setup");
+		
+
+		for (char chr[2] = { STARTING_CHAR, '\0' }; chr[0] <= ENDING_CHAR; chr[0]++)
+		{
+			printf("Character: %c\r", chr[0]);
+
+			cv::Mat _m = cv::Mat(cv::Size(_xitr + 10, _yitr+ 20), CV_8UC1, bgcolor);
+			ft2->putText(_m, chr, _CAL_origin, _yitr, textcolor, -1, cv::LINE_AA, false);
+
+			_path[6] = chr[0];
+			cv::imwrite(_path, _m);
+		}
+		return;
+		/*															*/
+		/* ---				STATSCII BEGINS HERE				---	*/
+		/*															*/
+
+		printf("Character: %c\n", ENDING_CHAR);
+
+	skipsetup:
 
 		printf("Processing...\n");
 		while (video.read(_frm))
@@ -156,49 +182,65 @@ struct statscii
 
 			time = clock();
 
-			cv::Mat newmat(
-				size,
-				CV_8UC1,
-				cv::Scalar(0, 0, 0)
-			);
+			cv::Mat newmat(size, CV_8UC1, bgcolor);
 
 			for (_y = 0; _y < yend; _y = _y + _yitr) {
 			for (_x = 0; _x < xend; _x = _x + _xitr) {
-
+				
 				char* _simchrs;
 				int* _caverage;
 				GetAverageColor(&_caverage);								// Colored average
-
+				
 				// Grayscale average
-				int   _gaverage = grayscale_conversion_type(_caverage[0], _caverage[1], _caverage[2]);
-				char  _chr[2]    = { ' ', '\0' };
+				int   _gaverage = gstype(_caverage[0], _caverage[1], _caverage[2]);
+				char  _chr;
 
+				/*															*/
 				/*	---				CONVERSION BEGINS HERE				---	*/
+				/*															*/
 
-				if (variation != Variations::STANDARD) goto skipstandard;	// Tests if variation is STANDARD
+				if (!apply_static) goto skipstandard;						// Skips static application if apply_static is false
 				if (GetRand(1, 50) != 1) goto skipstandard;					// Draws random number. Skip STANDARD if the number is 1
 
-				_chr[0] = (char)GetRand(STARTING_CHAR, ENDING_CHAR);		// Sets the chosen character to a random character
+				_chr = (char)GetRand(STARTING_CHAR, ENDING_CHAR);			// Sets the chosen character to a random character
 				goto convert_loop_end;										// Goes to the end of the loop
 			
 			// Go here if the variation is not STANDARD or the number generator failed to give 1.
 			skipstandard:
-				GetSimilarCharacters(_gaverage, spectrum, threshold, &_simchrs);
 
-				// Adding 1 to threshold prevents _min from being 0 and _max being 1(GetRand breaks when _min = 0 and _max = 1)
-				// Subtract the resulting number by 1 to get the actual drawn number
-				_chr[0] = _simchrs[GetRand(1, threshold) - 1];
-
+				GetSimilarCharacters(_gaverage, &_simchrs);
+				
+				// Get random similar character
+				_chr = _simchrs[GetRand(0, threshold - 1)];
+				
 			// End of for loop
 			convert_loop_end:
-				ft2->putText(newmat, _chr, cv::Point(_x, _y), _yitr, (color) ? cv::Scalar(_caverage[2], _caverage[1], _caverage[0]) : _gaverage, -1, cv::LINE_AA, false);
+
+				_path[6] = _chr;
+				DWORD _chrexist = GetFileAttributesA(_path);
+
+				if (_chr == ' ') continue;
+				if (color || _chrexist == INVALID_FILE_ATTRIBUTES)	// This is a last resort if the character wasn't found or if color is false
+				{
+					ft2->putText(
+						newmat, { _chr, '\0' },
+						cv::Point(_x, _y), _yitr,
+						(color) ? cv::Scalar(_caverage[2], _caverage[1], _caverage[0]) : textcolor,
+						-1, cv::LINE_AA, false
+					);
+					continue;
+				}
+
+				cv::Mat _chm = cv::imread(_path, cv::IMREAD_UNCHANGED);
+
+				// FIND A BETTER COPYING METHOD!!!!!
+				_chm.copyTo(newmat(cv::Rect(_x, _y, _chm.cols, _chm.rows)));
 			}}
 
 			result.write(newmat);
 			cf++;
 
 			time = clock() - time;
-
 			// Calculate estimated wait time
 			waittime = (((double)time) / CLOCKS_PER_SEC) * (tf - cf);
 		}
@@ -206,11 +248,12 @@ struct statscii
 
 		video.release();
 		result.release();
+		RemoveDirectoryA(_path);
 		
 		printf("Completed.\n");
 	}
 	
-	void calibrate(bool overwrite_current_spectrum, bool overwrite_mapfile, double bias, GrayScaleType grayscale_conversion_type)
+	void calibrate(bool overwrite_current_spectrum, bool overwrite_mapfile, double bias, GSType grayscale_conversion_type)
 	{
 		printf("Copying files... \n");
 		FILE* file;
@@ -219,10 +262,10 @@ struct statscii
 		char  tmptext[BUFFER_FILE_SIZE];
 
 		// Opens files and checks if they are successful
-		if (!(file = fopen(mapfile, "r"))) throw _statexception("Cannot open mapfile in calibration function");
+		if (!(file = fopen(_mapfile, "r"))) throw _statexception("Cannot open mapfile in calibration function");
 		if (!(tmpfile = fopen(TEMP_FILE_NAME, "w"))) throw _statexception("Cannot write tmpfile in calibration function");
 
-		// Copies the comments from mapfile into tmpfile
+		// Copies the comments from _mapfile into tmpfile
 		while (fgets(tmptext, BUFFER_FILE_SIZE, file)) { if (tmptext[1] == '/' && tmptext[0] == '/') fputs(tmptext, tmpfile); }
 
 		fclose(file);
@@ -232,7 +275,7 @@ struct statscii
 		// newfile is mapfile.txt if overwrite_mapfile is true, otherwise it creates its own file
 		if (!(tmpfile = fopen(TEMP_FILE_NAME, "r"))) throw _statexception("Cannot open tmp file in calibration function");
 		if (!(newfile = fopen(
-			(overwrite_mapfile) ? mapfile : NEW_FILE_NAME,
+			(overwrite_mapfile) ? _mapfile : NEW_FILE_NAME,
 			"w"
 		))) throw _statexception("Cannot erase current or new mapfile");
 
@@ -240,7 +283,7 @@ struct statscii
 		// So, close old newfile and reopen it in "a" mode
 		fclose(newfile);
 		if (!(newfile = fopen(
-			(overwrite_mapfile) ? mapfile : NEW_FILE_NAME,
+			(overwrite_mapfile) ? _mapfile : NEW_FILE_NAME,
 			"a"
 		))) throw _statexception("Cannot write new mapfile or overwrite current mapfile");
 
@@ -254,10 +297,7 @@ struct statscii
 		
 		printf("Beginning calibration...\n");
 
-		cv::Scalar basecolor(255, 255, 255);
-		cv::Scalar textcolor(0, 0, 0);
-		cv::Point  origin(0, 0);
-		cv::Size   size = ft2->getTextSize(DEFAULT_CHARACTER, CALIBRATION_FONT_SIZE, -1, 0);
+		cv::Size size = ft2->getTextSize(DEFAULT_CHARACTER, CALIBRATION_FONT_SIZE, -1, 0);
 		// Needs to be set, otherwise GetAverageColor() won't work
 		_yitr = size.height;
 		_xitr = size.width;
@@ -271,8 +311,8 @@ struct statscii
 			if (subject[0] == ' ') goto saveaverage;
 
 
-			_frm = cv::Mat(size, CV_8UC1, basecolor);
-			ft2->putText(_frm, subject, origin, CALIBRATION_FONT_SIZE, textcolor, -1, cv::LINE_AA, false);
+			_frm = cv::Mat(size, CV_8UC1, _CAL_basecolor);
+			ft2->putText(_frm, subject, _CAL_origin, CALIBRATION_FONT_SIZE, _CAL_textcolor, -1, cv::LINE_AA, false);
 			_y = 0;
 			_x = 0;
 
@@ -300,6 +340,18 @@ struct statscii
 
 		fclose(newfile);
 	}
+
+	/*																*/
+	/* ---				Configuration Variables					--- */
+	/*																*/
+
+	cv::Scalar textcolor	= cv::Scalar(255, 255, 255);
+	cv::Scalar bgcolor		= cv::Scalar(0, 0, 0);
+	GSType	   gstype		= GSTypes::RelativeLuminance;
+	bool	   color		= 0;
+	bool	   apply_static	= 1;
+	int		   threshold	= 1;
+
 private:
 	cv::Ptr<cv::freetype::FreeType2> ft2 = cv::freetype::createFreeType2();	// Freetype font
 	cv::Mat _frm;		// Extracted frame
@@ -307,8 +359,9 @@ private:
 	int _x;				// Current x-coordinate
 	int _yitr;			// Iteration height
 	int _xitr;			// Iteration width
-	char* mapfile = (char*)"";
+	char* _mapfile = (char*)"";
 	double area;		// Thing that is used in GetAverageColor()
+
 	// Characters to use in conversion -- character spectrum
 	// Structure:
 	// [
@@ -321,19 +374,19 @@ private:
 	int spectrum[ENDING_CHAR - STARTING_CHAR];
 
 #define TEST(obj, end) if(obj == NULL) goto end
-	void StripString(char* string)
+	void StripString(char* _string)
 	{
-		if (!strlen(string)) return;
+		if (!strlen(_string)) return;
 
 		char* result = (char*)malloc(sizeof(char));
-		int   length = strlen(string);
+		int   length = strlen(_string);
 		int   c = 1;
 		TEST(result, stripstringend);
 		result[0] = '\0';
 
 		for (int i = 0; i < length; i++)
 		{
-			char subject = string[i];
+			char subject = _string[i];
 			if (subject == '\t' || subject == ' ' || subject == '\n') continue;
 
 			// Allocate new memory
@@ -349,21 +402,21 @@ private:
 
 		// Using labels because I can't be fucked to exit while in the loop
 	stripstringend:
-		string = result;
+		_string = result;
 		free(result);
 	}
 
-	void CleanSpectrum(char* string, int* out)
+	void CleanSpectrum(char* _string, int* _buffer)
 	{
 		char* result = (char*)malloc(sizeof(char));
 		bool  atcolon = false;
-		int	  length = strlen(string);
+		int	  length = strlen(_string);
 		int   c = 1;
 		TEST(result, cleanspectrumend);
 
 		for (int i = 2; i < length; i++)
 		{
-			char subject = string[i];
+			char subject = _string[i];
 
 			char* tmp = (char*)realloc(result, c * sizeof(char));
 			TEST(tmp, cleanspectrumend);
@@ -374,26 +427,56 @@ private:
 		}
 
 	cleanspectrumend:
-		(*out) = atoi(result);
+		(*_buffer) = atoi(result);
 		free(result);
 	}
 
-	void GetSimilarCharacters(int _color, int* _spectrum, int _threshold, char** _buffer)
+	void GetSetupImageName(int _num, char** _buffer)
 	{
-		int* priority = (int*)malloc(_threshold * sizeof(int) * 2);	// Dynamic 2d array. Column 0 is the spectrum value, column 1 is the character
+		char _charnum[3];
+		char _su[7]{ "setup/" };
+		char _pg[5]{ ".png" };
+		sprintf(_charnum, "%d", _num);
+
+		// Plus 1 for string terminator
+		char* _res = (char*)malloc((15 + 1) * sizeof(char));
+		TEST(_res, setupimagenameend);
+
+		// Figure out way to concatenate _su, _charnum, and _pg together in that order
+		// Remember to account for any extra 0's in _charnum
+
+	setupimagenameend:
+		(*_buffer) = _res;
+		free(_res);
+	}
+
+	void GetSimilarCharacters(int _color, char** _buffer)
+	{
+		int* priority = (int*)malloc(threshold * sizeof(int) * 2);	// Dynamic 2d array. Column 0 is the spectrum value, column 1 is the character
 		int  max = ENDING_CHAR - STARTING_CHAR;
 		TEST(priority, simcharsend);
 
+		// Sets initial values to 0
+		for (int i = 0; i < threshold; i++)
+		{
+			priority[i * 2 + 1] = 0;
+			priority[i * 2]     = 0;
+		}
+
+		//printf("[%d,%d],[%d,%d]\n", priority[0 * 2 + 0], priority[0 * 2 + 1], priority[1 * 2 + 0], priority[1 * 2 + 1]);
 		// i = current char - STARTING_CHAR
 		for (int i = 0; i <= max; i++)
 		{
+
+			/*																						*/
 			/*						PUSHES HIGHEST SPECTRUM INTO priority							*/
 			/*			ALSO KEEPS TRACK OF CHARACTERS CORRESPONDANT TO THAT PRIORITY				*/
+			/*																						*/
 
 			int prv_idx[2]{};										// Stores previous column value
-			int mov_idx[2]{ -1 };										// Column 0 and 1 value. mov_idx[0] being -1 means the array is empty
+			int mov_idx[2]{ -1 };									// Column 0 and 1 value. mov_idx[0] being -1 means the array is empty
 
-			for (int j = 0; j < _threshold; j++)
+			for (int j = 0; j < threshold; j++)
 			{
 				int col1 = j * 2 + 1;								// column 1 of priority's jth index
 				int col0 = j * 2;									// column 0 of priority's jth index
@@ -418,7 +501,7 @@ private:
 				// DOES NOT continue if val_diff IS NOT LESS THAN the absolute difference of _val minus priority index j colum 0
 				// ONLY continue when val_diff is LESS THAN whatever it is being compared to
 
-				int _val = _spectrum[i];
+				int _val = spectrum[i];
 				if (abs(_val - _color) > abs(_val - priority[col0])) break;
 
 				prv_idx[1] = priority[col1];						// Save to-be-overwritten row
@@ -432,57 +515,58 @@ private:
 			}
 		}
 
+		
 	simcharsend:
-		char* tmp = (char*)malloc(_threshold * sizeof(char));
+		char* tmp = (char*)malloc(threshold * sizeof(char));
 		TEST(tmp, simcharsend2);
 
-		for (int i = 0; i < _threshold; i++) {
+		for (int i = 0; i < threshold; i++) {
 			tmp[i] = (char)(priority[i * 2 + 1] + STARTING_CHAR);
 		}
 
 	simcharsend2:
 		(*_buffer) = tmp;
-
+		free(tmp);
 		free(priority);
 	}
 
-	int GetRand(int _min, int _max) { return _min + rand() % (_max - _min); }
+	int GetRand(int _min, int _max)
+	{
+		if (_min == _max) return _min;
+		if (_max - _min == 1) return _min + rand() % 2;
+
+		return _min + rand() % (_max - _min);
+	}
 	// Returns dynamic array with three indexes:
 	// 0 = R
 	// 1 = G
 	// 2 = B
 	void GetAverageColor(int** _buffer)
 	{
-		int*   average = (int*)malloc(3 * sizeof(int));	// RGB memory
-		int    _r      = 0;
-		int    _g      = 0;
-		int    _b      = 0;
+		int* _av = (int*)malloc(3 * sizeof(int));
 		int    yend    = _y + _yitr;
 		int    xend	   = _x + _xitr;
-		TEST(average, averagecolorend);
+		TEST(_av, averagecolorend);
+
+		// Sets initial values to 0
+		for (int i = 0; i < 3; i++) { _av[i] = 0; }
 
 		for (int y = _y; y <= yend; y++) {
 		for (int x = _x; x <= xend; x++) {
-			cv::Vec3b color = _frm.at<cv::Vec3b>(y, x);
 
-			//average[0] += color[2];						// Adds R value
-			_r += color[2];
-			//average[1] += color[1];						// Adds G value
-			_g += color[1];
-			//average[2] += color[0];						// Adds B value
-			_b += color[0];
+			cv::Vec3b color = _frm.at<cv::Vec3b>(y, x);
+			_av[0] += color[2];							// Adds R value
+			_av[1] += color[1];							// Adds B value
+			_av[2] += color[0];							// Adds G value
+
 		}}
 		
-		_r *= area;
-		_g *= area;
-		_b *= area;
-
-		average[0] = _r;									// Divides sums by the area
-		average[1] = _g;
-		average[2] = _b;
+		_av[0] *= area;									// Divides sums by the area
+		_av[1] *= area;									// Technically the area is stored as a decimal; as 1.0 / ( w * h )
+		_av[2] *= area;
 
 	averagecolorend:
-		(*_buffer) = average;
-		free(average);
+		(*_buffer) = _av;
+		free(_av);
 	}
 };

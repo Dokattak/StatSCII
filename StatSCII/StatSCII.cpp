@@ -21,10 +21,7 @@ int main(int argc, char* argv[])
 			"\t\tLightness = 1\n" <<
 			"\t\tContrast = 2\n" <<
 			"\t\tAverage = 3\n" <<
-			"\t[-typ] = Integer; Type of ASCII to video conversion. Possible values and what they are:\n" <<
-			"\t\t0 = Standard; Default StatSCII varation, producing a static-like ASCII video.\n" <<
-			"\t\t1 = Classic; Converts all frames to ASCII then compiles them as a video.\n" <<
-			"\t\t2 = Chaos; Uses threshold to determine ASCII equivelant. I don't even know why you would use this variation.\n" <<
+			"\t[-stc] = Boolean; Determines if StatSCII should put 'ASCII static' in the video ; enter a 0 for false and a non-zero for true\n" <<
 			"Special Commands:\n" <<
 			"\t[-cal] = None; Calibrates a map file and outputs it as new_specfile.txt\n" <<
 			"\tNOTE: The [-cal] arguement can be used with any of the following arguements:\n" <<
@@ -34,7 +31,7 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	GrayScaleType grayscale_conversion_type = statscii_grayscale_types::RelativeLuminance;
+	GSType grayscale_conversion_type = GSTypes::RelativeLuminance;
 	double bias						 = 1;
 	char*  videofile				 = (char*)"";
 	char*  fontfile					 = (char*)"defaultfont.ttf";
@@ -42,8 +39,8 @@ int main(int argc, char* argv[])
 	bool   calibrate				 = false;
 	bool   overwrite_mapfile		 = false;
 	bool   wantcolor				 = false;
-	int	   variation                 = Variations::STANDARD;
-	int    threshold				 = 2;
+	bool   wantstatic				 = false;
+	int    threshold				 = 1;
 	int    height					 = 20;
 
 	for (int i = 1; i < argc; i = i + 2)
@@ -61,15 +58,15 @@ int main(int argc, char* argv[])
 			int x = atoi(prm);
 			switch (x)
 			{
-			case 0: { grayscale_conversion_type = statscii_grayscale_types::RelativeLuminance; continue; }
-			case 1: { grayscale_conversion_type = statscii_grayscale_types::Lightness; continue; }
-			case 2: { grayscale_conversion_type = statscii_grayscale_types::Contrast; continue; }
-			case 3: { grayscale_conversion_type = statscii_grayscale_types::Average; continue; }
+			case 0: { grayscale_conversion_type = GSTypes::RelativeLuminance; continue; }
+			case 1: { grayscale_conversion_type = GSTypes::Lightness; continue; }
+			case 2: { grayscale_conversion_type = GSTypes::Contrast; continue; }
+			case 3: { grayscale_conversion_type = GSTypes::Average; continue; }
 			}
 			printf("Invalid GrayScaleConversion type '%d'\n", x);
 			return -1;
 		}
-		else if (strcmp(arg, "-typ") == 0) variation = atoi(prm);
+		else if (strcmp(arg, "-stc") == 0) wantstatic = atoi(prm);
 		else if (strcmp(arg, "-cal") == 0) { calibrate = true; i--; }
 		else if (strcmp(arg, "-overmap") == 0) { overwrite_mapfile = true; i--; }
 		else if (strcmp(arg, "-bis") == 0) sscanf(prm, "%lf", &bias);
@@ -84,13 +81,18 @@ int main(int argc, char* argv[])
 	
 	try
 	{
+		stcii.apply_static = wantstatic;
+		stcii.color		   = wantcolor;
+		stcii.gstype	   = grayscale_conversion_type;
+		stcii.threshold    = threshold;
+
 		if (calibrate) stcii.calibrate(false, overwrite_mapfile, bias, grayscale_conversion_type);
 		if (videofile == "")
 		{
 			printf("Error: source video was not defined. Exiting...");
 			return -1;
 		}
-		stcii.convert(videofile, height, wantcolor, (Variations)variation, grayscale_conversion_type, threshold);
+		stcii.convert(videofile, height);
 	}
 	catch (std::exception& e) { printf(e.what()); }
 
