@@ -206,7 +206,7 @@ struct statscii
 				/*															*/
 
 				if (!apply_static) goto skipstandard;						// Skips static application if apply_static is false
-				if (GetRand(1, 50) != 1) goto skipstandard;					// Draws random number. Skip STANDARD if the number is 1
+				if (GetRand(1, 100) != 1) goto skipstandard;				// Draws random number. Skip STANDARD if the number is 1
 
 				_chr = (char)GetRand(STARTING_CHAR, ENDING_CHAR);			// Sets the chosen character to a random character
 				goto convert_loop_end;										// Goes to the end of the loop
@@ -252,7 +252,7 @@ struct statscii
 
 		video.release();
 		result.release();
-		RemoveDirectoryA("setup/");
+		rmdir("setup/");
 		
 		printf("Completed.\n");
 	}
