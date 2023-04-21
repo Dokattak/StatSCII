@@ -128,6 +128,8 @@ struct statscii
 		);
 		if (!result.isOpened()) throw _statexception("Cannot create output video.");
 
+
+
 		// Calculates dimensions for conversion
 		_yitr = video_height / height;
 		_xitr = ft2->getTextSize(DEFAULT_CHARACTER, _yitr, -1, 0).width;
@@ -140,11 +142,14 @@ struct statscii
 		int		yend	 = video_height - _yitr;
 		int		xend	 = video_width - _xitr;
 
+
+
 		/*															*/
 		/* ---				SETUP BEGINS HERE					---	*/
 		/*															*/
 
-		char _path[] = "setup/ .png\0";
+
+
 		int _res;
 		if (color) goto skipsetup;
 		printf("Beginning setup...\n");
@@ -160,29 +165,30 @@ struct statscii
 		{
 			printf("Character: %c\r", chr[0]);
 
-			cv::Mat _m = cv::Mat(cv::Size(_xitr + 10, _yitr+ 20), CV_8UC1, bgcolor);
+			cv::Mat _m = cv::Mat(cv::Size(_xitr * 1.10, _yitr * 1.30), CV_8UC4, cv::Scalar(0, 0, 0, 0));
 			ft2->putText(_m, chr, _CAL_origin, _yitr, textcolor, -1, cv::LINE_AA, false);
 
-			_path[6] = chr[0];
+			char* _path;
+			GetSetupImageName(chr[0], &_path);
 			cv::imwrite(_path, _m);
 		}
-		return;
+		
 		/*															*/
 		/* ---				STATSCII BEGINS HERE				---	*/
 		/*															*/
-
+		
 		printf("Character: %c\n", ENDING_CHAR);
-
+		
 	skipsetup:
 
 		printf("Processing...\n");
 		while (video.read(_frm))
 		{
-			printf("Processed Frames: %d/%d\t\tEstimated wait time: %.3fs (~%1.0fmin)\r", cf, tf, waittime, waittime / 60);
+			printf("Processed Frames: %d/%d\t\tEstimated wait time: %.3fs (~%1.1fmin)\t\t\t\r", cf, tf, waittime, waittime / 60);
 
 			time = clock();
 
-			cv::Mat newmat(size, CV_8UC1, bgcolor);
+			cv::Mat newmat(size, CV_8UC4, bgcolor);
 
 			for (_y = 0; _y < yend; _y = _y + _yitr) {
 			for (_x = 0; _x < xend; _x = _x + _xitr) {
@@ -216,25 +222,23 @@ struct statscii
 			// End of for loop
 			convert_loop_end:
 
-				_path[6] = _chr;
-				DWORD _chrexist = GetFileAttributesA(_path);
-
 				if (_chr == ' ') continue;
-				if (color || _chrexist == INVALID_FILE_ATTRIBUTES)	// This is a last resort if the character wasn't found or if color is false
+				if (color)
 				{
 					ft2->putText(
 						newmat, { _chr, '\0' },
 						cv::Point(_x, _y), _yitr,
-						(color) ? cv::Scalar(_caverage[2], _caverage[1], _caverage[0]) : textcolor,
+						cv::Scalar(_caverage[2], _caverage[1], _caverage[0]),
 						-1, cv::LINE_AA, false
 					);
 					continue;
 				}
+				
+				char* _path;
+				GetSetupImageName(_chr, &_path);
 
 				cv::Mat _chm = cv::imread(_path, cv::IMREAD_UNCHANGED);
-
-				// FIND A BETTER COPYING METHOD!!!!!
-				_chm.copyTo(newmat(cv::Rect(_x, _y, _chm.cols, _chm.rows)));
+				PutMatOnMat(_chm, newmat);
 			}}
 
 			result.write(newmat);
@@ -248,7 +252,7 @@ struct statscii
 
 		video.release();
 		result.release();
-		RemoveDirectoryA(_path);
+		RemoveDirectoryA("setup/");
 		
 		printf("Completed.\n");
 	}
@@ -345,8 +349,8 @@ struct statscii
 	/* ---				Configuration Variables					--- */
 	/*																*/
 
-	cv::Scalar textcolor	= cv::Scalar(255, 255, 255);
-	cv::Scalar bgcolor		= cv::Scalar(0, 0, 0);
+	cv::Scalar textcolor	= cv::Scalar(255, 255, 255, 255);
+	cv::Scalar bgcolor		= cv::Scalar(0, 0, 0, 255);
 	GSType	   gstype		= GSTypes::RelativeLuminance;
 	bool	   color		= 0;
 	bool	   apply_static	= 1;
@@ -374,6 +378,25 @@ private:
 	int spectrum[ENDING_CHAR - STARTING_CHAR];
 
 #define TEST(obj, end) if(obj == NULL) goto end
+	void PutMatOnMat(cv::Mat& _in, cv::Mat& _out)
+	{
+		int yend = _y + _in.rows;
+		int xend = _x + _in.cols;
+
+		if (yend > _out.rows) yend = _out.rows;
+		if (xend > _out.cols) xend = _out.cols;
+
+		for (int y = _y; y < yend; y++) {
+		for (int x = _x; x < xend; x++) {
+
+			cv::Vec4b _v = _in.at<cv::Vec4b>(y - _y, x - _x);
+			if (_v[3] == 0) continue;
+
+			_out.at<cv::Vec4b>(y, x) = _v;
+
+		}}
+	}
+
 	void StripString(char* _string)
 	{
 		if (!strlen(_string)) return;
@@ -405,7 +428,6 @@ private:
 		_string = result;
 		free(result);
 	}
-
 	void CleanSpectrum(char* _string, int* _buffer)
 	{
 		char* result = (char*)malloc(sizeof(char));
@@ -430,26 +452,20 @@ private:
 		(*_buffer) = atoi(result);
 		free(result);
 	}
-
 	void GetSetupImageName(int _num, char** _buffer)
 	{
 		char _charnum[3];
-		char _su[7]{ "setup/" };
-		char _pg[5]{ ".png" };
 		sprintf(_charnum, "%d", _num);
+		if (_num < 100)					// If the number is less than 100, then index 0 needs to be a 0
+		{
+			_charnum[2] = _charnum[1];
+			_charnum[1] = _charnum[0];
+			_charnum[0] = '0';
+		}
 
-		// Plus 1 for string terminator
-		char* _res = (char*)malloc((15 + 1) * sizeof(char));
-		TEST(_res, setupimagenameend);
-
-		// Figure out way to concatenate _su, _charnum, and _pg together in that order
-		// Remember to account for any extra 0's in _charnum
-
-	setupimagenameend:
+		char _res[]{ 's', 'e', 't', 'u', 'p', '/', _charnum[0], _charnum[1], _charnum[2], '.', 'p', 'n', 'g' , '\0' };
 		(*_buffer) = _res;
-		free(_res);
 	}
-
 	void GetSimilarCharacters(int _color, char** _buffer)
 	{
 		int* priority = (int*)malloc(threshold * sizeof(int) * 2);	// Dynamic 2d array. Column 0 is the spectrum value, column 1 is the character
@@ -551,8 +567,8 @@ private:
 		// Sets initial values to 0
 		for (int i = 0; i < 3; i++) { _av[i] = 0; }
 
-		for (int y = _y; y <= yend; y++) {
-		for (int x = _x; x <= xend; x++) {
+		for (int y = _y; y < yend; y++) {
+		for (int x = _x; x < xend; x++) {
 
 			cv::Vec3b color = _frm.at<cv::Vec3b>(y, x);
 			_av[0] += color[2];							// Adds R value
