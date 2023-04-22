@@ -176,7 +176,7 @@ struct statscii
 		/*															*/
 		/* ---				STATSCII BEGINS HERE				---	*/
 		/*															*/
-		
+
 		printf("Character: %c\n", ENDING_CHAR);
 		
 	skipsetup:
@@ -184,7 +184,7 @@ struct statscii
 		printf("Processing...\n");
 		while (video.read(_frm))
 		{
-			printf("Processed Frames: %d/%d\t\tEstimated wait time: %.3fs (~%1.1fmin)\t\t\t\r", cf, tf, waittime, waittime / 60);
+			printf("Processed Frames: %d/%d\t\tEstimated wait time: %.3fs (~%1.1fmin)                   \r", cf, tf, waittime, waittime / 60);
 
 			time = clock();
 
@@ -206,7 +206,7 @@ struct statscii
 				/*															*/
 
 				if (!apply_static) goto skipstandard;						// Skips static application if apply_static is false
-				if (GetRand(1, 100) != 1) goto skipstandard;				// Draws random number. Skip STANDARD if the number is 1
+				if (GetRand(1, 5000) != 1) goto skipstandard;				// Draws random number. Skip STANDARD if the number is 1
 
 				_chr = (char)GetRand(STARTING_CHAR, ENDING_CHAR);			// Sets the chosen character to a random character
 				goto convert_loop_end;										// Goes to the end of the loop
@@ -249,10 +249,27 @@ struct statscii
 			waittime = (((double)time) / CLOCKS_PER_SEC) * (tf - cf);
 		}
 		printf("Processed Frames: %d/%d\tEstimated wait time: 0s (0min)\n", cf, tf);
-
+		
 		video.release();
 		result.release();
-		rmdir("setup/");
+
+		printf("Cleaning temporary setup files...\n");
+		
+		/*											 */
+		/* ---	   Deletes Setup Directory		 --- */
+		/*											 */
+
+		WIN32_FIND_DATAA _fd;
+		HANDLE _hf = FindFirstFileA("setup/*.*", &_fd);
+		char _fn[1024];
+
+		do {
+			sprintf(_fn, "setup/%s", _fd.cFileName);
+			DeleteFileA(_fn);
+		} while (FindNextFileA(_hf, &_fd));
+
+		FindClose(_hf);
+		if(_rmdir("setup/")) printf("Error: could not remove setup directory\n");
 		
 		printf("Completed.\n");
 	}
@@ -476,10 +493,10 @@ private:
 		for (int i = 0; i < threshold; i++)
 		{
 			priority[i * 2 + 1] = 0;
-			priority[i * 2]     = 0;
+			priority[i * 2]     = -1;
 		}
 
-		//printf("[%d,%d],[%d,%d]\n", priority[0 * 2 + 0], priority[0 * 2 + 1], priority[1 * 2 + 0], priority[1 * 2 + 1]);
+
 		// i = current char - STARTING_CHAR
 		for (int i = 0; i <= max; i++)
 		{
@@ -518,7 +535,11 @@ private:
 				// ONLY continue when val_diff is LESS THAN whatever it is being compared to
 
 				int _val = spectrum[i];
-				if (abs(_val - _color) > abs(_val - priority[col0])) break;
+				
+				if (priority[col0] == -1) goto skiptestlabel;
+				if (abs(_color - _val) > abs(_color - priority[col0])) break;
+				
+			skiptestlabel:
 
 				prv_idx[1] = priority[col1];						// Save to-be-overwritten row
 				prv_idx[0] = priority[col0];

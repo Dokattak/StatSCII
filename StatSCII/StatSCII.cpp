@@ -15,18 +15,18 @@ int main(int argc, char* argv[])
 			"\t[-spf] = File Path; Source of custom map file(OPTIONAL)\n" <<
 			"\t[-chh] = Integer; Height of resulting video in characters\n\n" <<
 			"\t[-thr] = Integer; Number of similar characters gathered before insertion\n" <<
-			"\t[-col] = Boolean; Determines if found characters will inherit color from the original video; enter a 0 for false and a non-zero for true\n" <<
+			"\t[-col] = None; If present, the resulting characters will inherit the average color that they took up\n" <<
 			"\t[-gcv] = Integer; Number corresponding to the type of RGB to grayscale to use. Possible values:\n" <<
 			"\t\tRelative Luminance = 0\n" <<
 			"\t\tLightness = 1\n" <<
 			"\t\tContrast = 2\n" <<
 			"\t\tAverage = 3\n" <<
-			"\t[-stc] = Boolean; Determines if StatSCII should put 'ASCII static' in the video ; enter a 0 for false and a non-zero for true\n" <<
+			"\t[-stc] = None; If present, StatSCII will apply its 'ASCII Static' to the resulting video\n" <<
 			"Special Commands:\n" <<
-			"\t[-cal] = None; Calibrates a map file and outputs it as new_specfile.txt\n" <<
+			"\t[-cal] = None; Calibrates a map file and outputs it as new_mapfile.txt\n" <<
 			"\tNOTE: The [-cal] arguement can be used with any of the following arguements:\n" <<
 			"\t\t[-bis] = Decimal; The bias applied to the average value when calibrated. Can be any number with or without a decimal.\n" <<
-			"\t\t[-overmap] = None; Overwrites specfile.txt instead of making a new file\n" <<
+			"\t\t[-overmap] = None; Overwrites mapfile.txt instead of making a new file\n" <<
 			std::endl;
 		return 0;
 	}
@@ -52,6 +52,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(arg, "-fnt") == 0) fontfile = prm;
 		else if (strcmp(arg, "-spf") == 0) specfile = prm;
 		else if (strcmp(arg, "-chh") == 0) height = atoi(prm);
+		else if (strcmp(arg, "-col") == 0) { wantcolor = true; i--; }
 		else if (strcmp(arg, "-thr") == 0) threshold = atoi(prm);
 		else if (strcmp(arg, "-gcv") == 0)
 		{
@@ -66,7 +67,7 @@ int main(int argc, char* argv[])
 			printf("Invalid GrayScaleConversion type '%d'\n", x);
 			return -1;
 		}
-		else if (strcmp(arg, "-stc") == 0) wantstatic = atoi(prm);
+		else if (strcmp(arg, "-stc") == 0) { wantstatic = true; i--; }
 		else if (strcmp(arg, "-cal") == 0) { calibrate = true; i--; }
 		else if (strcmp(arg, "-overmap") == 0) { overwrite_mapfile = true; i--; }
 		else if (strcmp(arg, "-bis") == 0) sscanf(prm, "%lf", &bias);
