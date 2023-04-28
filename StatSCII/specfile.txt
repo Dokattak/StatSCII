@@ -1,7 +1,0 @@
-# Format for the spectrum:
-#	[character]:[min],[max]
-# 
-# Example:
-#	a:100,200
-# 
-# Note: whitespaces and empty lines are ignored
