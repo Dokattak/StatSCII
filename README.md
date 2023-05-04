@@ -179,14 +179,14 @@ stcii.convert(videopath, 100);
 > 
 > Below are the OpenCV dependancies that must be present for StatSCII to function without error. Note that extension names are not included.
 
-## OpenCV v4.7.0 Dependancies
+## OpenCV v4.7.0 Dependencies
   - `opencv_core470`
   - `opencv_freetype470`
   - `opencv_imgcodecs470`
   - `opencv_imgproc470`
   - `opencv_videoio470`
 
-## Other Dependancies
+## Other Dependencies
   - `mapfile.txt`
   - `defaultfont.ttf`*
 
