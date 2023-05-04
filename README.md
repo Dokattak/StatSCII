@@ -1,6 +1,7 @@
 # WINDOWS BUILD ONLY
 
 # StatSCII <img src="https://img.shields.io/badge/version-v1.0.0-brightgreen.svg">
+<img src="https://img.shields.io/badge/language-C%2FC%2B%2B-blue.svg">
 
 > StatSCII is a video to ASCII converter with aesthetic features such as color, grayscale mode, and average color, etc. StatSCII comes as either a stand-alone executable already compiled and linked, or as a single header file with the required OpenCV libraries(see <a href="#libraries">Libraries</a>)
 
