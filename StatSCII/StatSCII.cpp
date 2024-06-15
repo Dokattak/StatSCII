@@ -16,6 +16,8 @@ int main(int argc, char* argv[])
 			"\t[-chh] = Integer; Height of resulting video in characters\n\n" <<
 			"\t[-thr] = Integer; Number of similar characters gathered before insertion\n" <<
 			"\t[-col] = None; If present, the resulting characters will inherit the average color that they took up\n" <<
+			"\t[-inv] = None; If present, RGB inversion will be disabled\n" <<
+			"\t[-img] = None; If present, StatSCII will convert a single image rather than a video. Source is determined by the 'src' value\n" <<
 			"\t[-gcv] = Integer; Number corresponding to the type of RGB to grayscale to use. Possible values:\n" <<
 			"\t\tRelative Luminance = 0\n" <<
 			"\t\tLightness = 1\n" <<
@@ -40,6 +42,8 @@ int main(int argc, char* argv[])
 	bool   overwrite_mapfile		 = false;
 	bool   wantcolor				 = false;
 	bool   wantstatic				 = false;
+	bool   wantimage				 = false;
+	bool   wantinverted				 = true;
 	int    threshold				 = 1;
 	int    height					 = 20;
 
@@ -54,6 +58,16 @@ int main(int argc, char* argv[])
 		else if (strcmp(arg, "-chh") == 0) height = atoi(prm);
 		else if (strcmp(arg, "-col") == 0) { wantcolor = true; i--; }
 		else if (strcmp(arg, "-thr") == 0) threshold = atoi(prm);
+		else if (strcmp(arg, "-inv") == 0)
+		{
+			wantinverted = false;
+			i--;
+		}
+		else if (strcmp(arg, "-img") == 0)
+		{
+			wantimage = true;
+			i--;
+		}
 		else if (strcmp(arg, "-gcv") == 0)
 		{
 			int x = atoi(prm);
@@ -86,8 +100,16 @@ int main(int argc, char* argv[])
 		stcii.color		   = wantcolor;
 		stcii.gstype	   = grayscale_conversion_type;
 		stcii.threshold    = threshold;
+		stcii.invert_color = wantinverted;
 
 		if (calibrate) stcii.calibrate(false, overwrite_mapfile, bias, grayscale_conversion_type);
+
+		if (wantimage)
+		{
+			stcii.convertimage(videofile, height, 1);
+			goto end;
+		}
+
 		if (videofile == "")
 		{
 			printf("Error: source video was not defined. Exiting...");
@@ -97,6 +119,7 @@ int main(int argc, char* argv[])
 	}
 	catch (std::exception& e) { printf(e.what()); }
 
+end:
 	printf("Program end\n");
 	return 0;
 }

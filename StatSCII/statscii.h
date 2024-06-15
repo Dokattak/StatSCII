@@ -115,7 +115,7 @@ struct statscii
 
 		double video_height = video.get(cv::CAP_PROP_FRAME_HEIGHT);	// Original video height in pixels
 		double video_width	= video.get(cv::CAP_PROP_FRAME_WIDTH);	// Original video width in pixels
-		cv::Size size(video_width, video_height);
+		size = cv::Size(video_width, video_height);
 		
 
 
@@ -139,39 +139,13 @@ struct statscii
 
 		clock_t time;
 		double  waittime = 0.0;
-		int		yend	 = video_height - _yitr;
-		int		xend	 = video_width - _xitr;
+		yend = video_height - _yitr;
+		xend = video_width - _xitr;
 
 
 
-		/*															*/
-		/* ---				SETUP BEGINS HERE					---	*/
-		/*															*/
-
-
-
-		int _res;
 		if (color) goto skipsetup;
-		printf("Beginning setup...\n");
-
-
-		// Attempt to make directory. _mkdir returns 0 if succeeded
-		_res = _mkdir("setup");
-		// If the directory hasn't been created, and _res failed, then an error occured
-		if (!(GetFileAttributesA("setup/") & INVALID_FILE_ATTRIBUTES) && _res) throw _statexception("Cannot create new directory for setup");
-		
-
-		for (char chr[2] = { STARTING_CHAR, '\0' }; chr[0] <= ENDING_CHAR; chr[0]++)
-		{
-			printf("Character: %c\r", chr[0]);
-
-			cv::Mat _m = cv::Mat(cv::Size(_xitr * 1.10, _yitr * 1.30), CV_8UC4, cv::Scalar(0, 0, 0, 0));
-			ft2->putText(_m, chr, _CAL_origin, _yitr, textcolor, -1, cv::LINE_AA, false);
-
-			char* _path;
-			GetSetupImageName(chr[0], &_path);
-			cv::imwrite(_path, _m);
-		}
+		BeginSetup();
 		
 		/*															*/
 		/* ---				STATSCII BEGINS HERE				---	*/
@@ -187,60 +161,8 @@ struct statscii
 			printf("Processed Frames: %d/%d\t\tEstimated wait time: %.3fs (~%1.1fmin)                   \r", cf, tf, waittime, waittime / 60);
 
 			time = clock();
-
-			cv::Mat newmat(size, CV_8UC4, bgcolor);
-
-			for (_y = 0; _y < yend; _y = _y + _yitr) {
-			for (_x = 0; _x < xend; _x = _x + _xitr) {
-				
-				char* _simchrs;
-				int* _caverage;
-				GetAverageColor(&_caverage);								// Colored average
-				
-				// Grayscale average
-				int   _gaverage = gstype(_caverage[0], _caverage[1], _caverage[2]);
-				char  _chr;
-
-				/*															*/
-				/*	---				CONVERSION BEGINS HERE				---	*/
-				/*															*/
-
-				if (!apply_static) goto skipstandard;						// Skips static application if apply_static is false
-				if (GetRand(1, 5000) != 1) goto skipstandard;				// Draws random number. Skip STANDARD if the number is 1
-
-				_chr = (char)GetRand(STARTING_CHAR, ENDING_CHAR);			// Sets the chosen character to a random character
-				goto convert_loop_end;										// Goes to the end of the loop
 			
-			// Go here if the variation is not STANDARD or the number generator failed to give 1.
-			skipstandard:
-
-				GetSimilarCharacters(_gaverage, &_simchrs);
-				
-				// Get random similar character
-				_chr = _simchrs[GetRand(0, threshold - 1)];
-				
-			// End of for loop
-			convert_loop_end:
-
-				if (_chr == ' ') continue;
-				if (color)
-				{
-					ft2->putText(
-						newmat, { _chr, '\0' },
-						cv::Point(_x, _y), _yitr,
-						cv::Scalar(_caverage[2], _caverage[1], _caverage[0]),
-						-1, cv::LINE_AA, false
-					);
-					continue;
-				}
-				
-				char* _path;
-				GetSetupImageName(_chr, &_path);
-
-				cv::Mat _chm = cv::imread(_path, cv::IMREAD_UNCHANGED);
-				PutMatOnMat(_chm, newmat);
-			}}
-
+			cv::Mat newmat = convertimage(_frm);
 			result.write(newmat);
 			cf++;
 
@@ -274,6 +196,90 @@ struct statscii
 		printf("Completed.\n");
 	}
 	
+	cv::Mat convertimage(char* _filepath, int height, int save_as_file)
+	{
+		cv::Mat source = cv::imread(_filepath);
+		
+		_yitr = source.rows / height;
+		_xitr = ft2->getTextSize(DEFAULT_CHARACTER, _yitr, -1, 0).width;
+		yend  = source.rows - _yitr;
+		xend  = source.cols - _xitr;
+		area  = 1.0 / (_xitr * _yitr);
+		size  = cv::Size(source.cols, source.rows);
+
+		BeginSetup();
+
+		cv::Mat newmat = convertimage(source);
+		if (save_as_file) cv::imwrite("result.png", newmat);
+
+		return newmat;
+	}
+	cv::Mat convertimage(cv::Mat _image)
+	{
+		_frm = _image;
+		cv::Mat out(size, CV_8UC4, bgcolor);
+
+		for (_y = 0; _y < yend; _y = _y + _yitr) {
+			for (_x = 0; _x < xend; _x = _x + _xitr) {
+
+				char* _simchrs;
+				int* _caverage;
+				GetAverageColor(&_caverage);										// Colored average
+
+				if (invert_color) InvertColors(&_caverage);							// Invert colors
+
+				// Grayscale average
+				int  _gaverage = gstype(_caverage[0], _caverage[1], _caverage[2]);
+				char _chr;
+
+				/*															*/
+				/*	---				CONVERSION BEGINS HERE				---	*/
+				/*															*/
+
+				if (!apply_static) goto skipstandard;								// Skips static application if apply_static is false
+				if (GetRand(1, _frm.rows * _frm.cols * 2) != 1) goto skipstandard;	// Draws random number. Skip STANDARD if the number is 1
+
+				_chr = (char)GetRand(STARTING_CHAR, ENDING_CHAR);					// Sets the chosen character to a random character
+				goto convert_loop_end;												// Goes to the end of the loop
+
+				// Go here if the variation is not STANDARD or the number generator failed to give 1.
+			skipstandard:
+
+				GetSimilarCharacters(_gaverage, &_simchrs);
+
+				// Get random similar character
+				_chr = _simchrs[GetRand(0, threshold - 1)];
+
+				// End of for loop
+			convert_loop_end:
+
+				if (_chr == ' ') continue;
+				if (color)
+				{
+					if (invert_color) InvertColors(&_caverage);
+
+					ft2->putText(
+						out, { _chr, '\0' },
+						cv::Point(_x, _y), _yitr,
+						cv::Scalar(_caverage[2], _caverage[1], _caverage[0]),
+						-1, cv::LINE_AA, false
+					);
+					continue;
+				}
+
+				char* _path;
+				GetSetupImageName(_chr, &_path);
+
+				cv::Mat _chm = cv::imread(_path, cv::IMREAD_UNCHANGED);
+				PutMatOnMat(_chm, out);
+
+				
+			}
+		}
+
+		return out;
+	}
+
 	void calibrate(bool overwrite_current_spectrum, bool overwrite_mapfile, double bias, GSType grayscale_conversion_type)
 	{
 		printf("Copying files... \n");
@@ -326,7 +332,7 @@ struct statscii
 
 		for (char subject[2]{ STARTING_CHAR, '\0' }; subject[0] <= ENDING_CHAR; subject[0]++)
 		{
-			//printf("Character: %c\r", subject[0]);
+			printf("Character: %c\r", subject[0]);
 			int*    _cav;			// Average color
 			int     _gav = 255;		// Average grayscale
 			if (subject[0] == ' ') goto saveaverage;
@@ -371,6 +377,7 @@ struct statscii
 	GSType	   gstype		= GSTypes::RelativeLuminance;
 	bool	   color		= 0;
 	bool	   apply_static	= 1;
+	bool       invert_color = 1;
 	int		   threshold	= 1;
 
 private:
@@ -382,6 +389,10 @@ private:
 	int _xitr;			// Iteration width
 	char* _mapfile = (char*)"";
 	double area;		// Thing that is used in GetAverageColor()
+
+	cv::Size size;
+	int yend;
+	int xend;
 
 	// Characters to use in conversion -- character spectrum
 	// Structure:
@@ -397,14 +408,14 @@ private:
 #define TEST(obj, end) if(obj == NULL) goto end
 	void PutMatOnMat(cv::Mat& _in, cv::Mat& _out)
 	{
-		int yend = _y + _in.rows;
-		int xend = _x + _in.cols;
+		int _yend = _y + _in.rows;
+		int _xend = _x + _in.cols;
 
-		if (yend > _out.rows) yend = _out.rows;
-		if (xend > _out.cols) xend = _out.cols;
+		if (_yend > _out.rows) _yend = _out.rows;
+		if (_xend > _out.cols) _xend = _out.cols;
 
-		for (int y = _y; y < yend; y++) {
-		for (int x = _x; x < xend; x++) {
+		for (int y = _y; y < _yend; y++) {
+		for (int x = _x; x < _xend; x++) {
 
 			cv::Vec4b _v = _in.at<cv::Vec4b>(y - _y, x - _x);
 			if (_v[3] == 0) continue;
@@ -580,16 +591,16 @@ private:
 	// 2 = B
 	void GetAverageColor(int** _buffer)
 	{
-		int* _av = (int*)malloc(3 * sizeof(int));
-		int    yend    = _y + _yitr;
-		int    xend	   = _x + _xitr;
+		int* _av    = (int*)malloc(3 * sizeof(int));
+		int  _yend  = _y + _yitr;
+		int  _xend	= _x + _xitr;
 		TEST(_av, averagecolorend);
 
 		// Sets initial values to 0
 		for (int i = 0; i < 3; i++) { _av[i] = 0; }
 
-		for (int y = _y; y < yend; y++) {
-		for (int x = _x; x < xend; x++) {
+		for (int y = _y; y < _yend; y++) {
+		for (int x = _x; x < _xend; x++) {
 
 			cv::Vec3b color = _frm.at<cv::Vec3b>(y, x);
 			_av[0] += color[2];							// Adds R value
@@ -605,5 +616,36 @@ private:
 	averagecolorend:
 		(*_buffer) = _av;
 		free(_av);
+	}
+
+	void InvertColors(int** _in)
+	{
+		(*_in)[0] = 255 - (*_in)[0];
+		(*_in)[1] = 255 - (*_in)[1];
+		(*_in)[2] = 255 - (*_in)[2];
+	}
+
+	void BeginSetup()
+	{
+		printf("Beginning setup...\n");
+
+		// Attempt to make directory. _mkdir returns 0 if succeeded
+		int _res = _mkdir("setup");
+		// If the directory hasn't been created, and _res failed, then an error occured
+		if (!(GetFileAttributesA("setup/") & INVALID_FILE_ATTRIBUTES) && _res) throw _statexception("Cannot create new directory for setup");
+
+
+		for (char chr[2] = { STARTING_CHAR, '\0' }; chr[0] <= ENDING_CHAR; chr[0]++)
+		{
+			
+			printf("Character: %c\r", chr[0]);
+
+			cv::Mat _m(cv::Size(_xitr * 1.10, _yitr * 1.30), CV_8UC4, cv::Scalar(0, 0, 0, 0));
+			ft2->putText(_m, chr, _CAL_origin, _yitr, textcolor, -1, cv::LINE_AA, false);
+
+			char* _path;
+			GetSetupImageName(chr[0], &_path);
+			cv::imwrite(_path, _m);
+		}
 	}
 };
