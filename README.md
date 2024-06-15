@@ -86,11 +86,15 @@ stcii.convert(videopath, 100);
 
 
   - color(`bool`)
-      > If true, the resulting character will inherit the average color of the space it was subituted in.
+    > If true, the resulting character will inherit the average color of the space it was subituted in.
 
 
   - apply_static(`bool`)
     > Applies StatSCII's "static" variation of the ASCII art.
+
+
+  - invert_color(`bool`)
+    > If true, StatSCII will invert the average color of a area of pixels. Default value is `1`.
 
 
   - threshold(`int`)
@@ -145,6 +149,12 @@ stcii.convert(videopath, 100);
   - `-col`
     > None; if present, the resulting characters will inherit the average color that they took up.
 
+  - `-inv`
+    > None; if present, RGB inversion will be **disabled**.
+
+  - `-img`
+    > None; if present, StatSCII will convert a single image rather than a video. Source is determined by the `src` value.
+  
   - `-gcv`
     > A number; The type of grayscale coversion to use. The types of grayscale conversion are as follows:
     > 
